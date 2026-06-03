@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sov1.ai/miricledrive/schema/cognition.thread.schema.json",
+  "title": "MiricleDrive Cognition Thread Schema",
+  "description": "Normalized and replayable structure for AI cognition artifacts. It preserves the evolution of human-AI thought and enforces the 51/49 sovereignty boundary: AI may generate, but human adjudication is required before AI output gains continuity authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "thread_id", "created_at", "source_export", "turns", "governance"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "miricledrive.cognition_thread.v1"
+    },
+    "thread_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this cognition chain."
+    },
+    "title": {
+      "type": ["string", "null"]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "source_export": {
+      "$ref": "#/$defs/source_export"
+    },
+    "participants": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/participant" },
+      "default": []
+    },
+    "turns": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/turn" }
+    },
+    "comparison_sets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/comparison_event" },
+      "default": []
+    },
+    "thread_summary_claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/thread_claim" },
+      "default": []
+    },
+    "governance": {
+      "$ref": "#/$defs/governance"
+    },
+    "notes": {
+      "type": ["string", "null"]
+    }
+  },
+  "$defs": {
+    "source_export": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "export_hash", "is_raw", "source_confidence"],
+      "properties": {
+        "platform": {
+          "type": "string",
+          "description": "Interface or environment where the cognition event occurred. Examples: ChatGPT, Claude, Gemini, Grok, Perplexity, Copilot, DeepSeek, local model, GitHub, Google Drive."
+        },
+        "conversation_id": { "type": ["string", "null"] },
+        "message_id": { "type": ["string", "null"] },
+        "export_hash": {
+          "type": "string",
+          "description": "Cryptographic hash to verify the exported thread or source record."
+        },
+        "hash_algorithm": {
+          "type": "string",
+          "enum": ["sha256", "sha512", "blake3", "md5_legacy", "unknown"],
+          "default": "sha256"
+        },
+        "is_raw": {
+          "type": "boolean",
+          "description": "True if direct from API or platform export; false if copied, pasted, transcribed, or reconstructed."
+        },
+        "exported_at": { "type": ["string", "null"], "format": "date-time" },
+        "source_confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low", "unknown"]
+        },
+        "chain_of_custody_notes": { "type": ["string", "null"] }
+      }
+    },
+    "participant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["participant_id", "role"],
+      "properties": {
+        "participant_id": { "type": "string" },
+        "role": {
+          "type": "string",
+          "enum": ["human", "assistant", "system", "tool", "model", "external_source", "mixed", "unknown"]
+        },
+        "display_name": { "type": ["string", "null"] },
+        "provider": { "type": ["string", "null"] },
+        "model_name": { "type": ["string", "null"] },
+        "model_version": { "type": ["string", "null"] }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turn_id", "turn_index", "messages"],
+      "properties": {
+        "turn_id": { "type": "string", "format": "uuid" },
+        "turn_index": { "type": "integer", "minimum": 0 },
+        "created_at": { "type": ["string", "null"], "format": "date-time" },
+        "messages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/message" }
+        },
+        "model_invocations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/model_invocation" },
+          "default": []
+        },
+        "tool_invocations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tool_invocation" },
+          "default": []
+        },
+        "correction_events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/correction_event" },
+          "default": []
+        },
+        "human_judgments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/human_judgment" },
+          "default": []
+        },
+        "render_boundary": {
+          "$ref": "#/$defs/render_boundary"
+        },
+        "continuity_authority_status": {
+          "type": "string",
+          "enum": ["none", "pending_human_adjudication", "human_promoted", "human_rejected", "blocked"],
+          "description": "AI output has no continuity authority unless a human_judgment promotes it."
+        }
+      }
+    },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message_id", "speaker", "content_hash", "evidence_level"],
+      "properties": {
+        "message_id": { "type": "string" },
+        "speaker": {
+          "type": "string",
+          "enum": ["human", "assistant", "system", "tool", "mixed", "unknown"]
+        },
+        "content": {
+          "type": ["string", "null"],
+          "description": "Optional inline content. Large or sensitive messages may be stored externally and referenced by content_hash and source pointers."
+        },
+        "content_hash": { "type": "string" },
+        "timestamp": { "type": ["string", "null"], "format": "date-time" },
+        "source_pointer": { "type": ["string", "null"] },
+        "evidence_level": {
+          "type": "string",
+          "enum": ["recorded", "derived", "inferred", "uncertain", "missing", "forbidden"]
+        },
+        "authorship_boundary": {
+          "type": "string",
+          "enum": ["human_origin", "ai_generated", "human_ai_coauthored", "tool_generated", "unknown"],
+          "default": "unknown"
+        }
+      }
+    },
+    "model_invocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invocation_id", "provider", "model_name"],
+      "properties": {
+        "invocation_id": { "type": "string", "format": "uuid" },
+        "provider": { "type": "string" },
+        "model_name": { "type": "string" },
+        "model_version": { "type": ["string", "null"] },
+        "platform": { "type": ["string", "null"] },
+        "timestamp": { "type": ["string", "null"], "format": "date-time" },
+        "input_message_ids": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "output_message_ids": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "parameters_json": { "type": ["object", "null"] },
+        "known_limitations": { "type": ["string", "null"] }
+      }
+    },
+    "tool_invocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool_invocation_id", "tool_name"],
+      "properties": {
+        "tool_invocation_id": { "type": "string", "format": "uuid" },
+        "tool_name": { "type": "string" },
+        "input_hash": { "type": ["string", "null"] },
+        "output_hash": { "type": ["string", "null"] },
+        "input": { "type": ["string", "null"] },
+        "output": { "type": ["string", "null"] },
+        "timestamp": { "type": ["string", "null"], "format": "date-time" },
+        "source_pointer": { "type": ["string", "null"] }
+      }
+    },
+    "correction_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["correction_id", "correction_type", "target_message_id", "human_rationale"],
+      "properties": {
+        "correction_id": { "type": "string", "format": "uuid" },
+        "correction_type": {
+          "type": "string",
+          "enum": ["factual_correction", "boundary_correction", "tone_correction", "authorship_correction", "provenance_correction", "classification_correction", "other"]
+        },
+        "target_message_id": { "type": "string" },
+        "original_text_hash": { "type": ["string", "null"] },
+        "corrected_text_hash": { "type": ["string", "null"] },
+        "original_text": { "type": ["string", "null"] },
+        "corrected_text": { "type": ["string", "null"] },
+        "human_rationale": {
+          "type": "string",
+          "description": "Explicit rationale for human intervention."
+        },
+        "timestamp": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "comparison_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comparison_id", "models_compared", "human_rationale"],
+      "properties": {
+        "comparison_id": { "type": "string", "format": "uuid" },
+        "models_compared": { "type": "array", "minItems": 2, "items": { "type": "string" } },
+        "candidate_message_ids": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "selected_message_id": { "type": ["string", "null"] },
+        "human_rationale": {
+          "type": "string",
+          "description": "Trace of human judgment across competing synthetic intelligences."
+        },
+        "timestamp": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "human_judgment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["judgment_id", "adjudication", "target_message_id"],
+      "properties": {
+        "judgment_id": { "type": "string", "format": "uuid" },
+        "target_message_id": { "type": "string" },
+        "adjudication": {
+          "type": "string",
+          "enum": ["accepted", "rejected", "corrected", "challenged", "expanded", "cross_examined", "stored", "discarded", "promoted_to_doctrine", "promoted_to_schema", "promoted_to_code"]
+        },
+        "continuity_authority_granted": {
+          "type": "boolean",
+          "description": "True only when the human promotes the output into continuity-bearing status."
+        },
+        "notes": { "type": ["string", "null"] },
+        "timestamp": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "thread_claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "claim_text", "evidence_level"],
+      "properties": {
+        "claim_id": { "type": "string", "format": "uuid" },
+        "claim_text": { "type": "string" },
+        "evidence_level": { "type": "string", "enum": ["recorded", "derived", "inferred", "uncertain", "missing", "forbidden"] },
+        "supporting_message_ids": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "human_review_status": { "type": "string", "enum": ["unreviewed", "approved", "rejected", "contested"], "default": "unreviewed" },
+        "renderer_visibility": { "type": "string", "enum": ["allowed", "restricted", "blocked"], "default": "restricted" }
+      }
+    },
+    "render_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["boundary_active"],
+      "properties": {
+        "boundary_active": {
+          "type": "boolean",
+          "description": "True when this turn asserts a human-majority boundary over AI output."
+        },
+        "boundary_type": {
+          "type": "string",
+          "enum": ["51_49", "source_only", "human_review_required", "do_not_render", "unknown"],
+          "default": "51_49"
+        },
+        "notes": { "type": ["string", "null"] }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default_render_policy", "ai_output_requires_human_adjudication"],
+      "properties": {
+        "default_render_policy": {
+          "type": "string",
+          "enum": ["may_quote", "may_summarize_with_citation", "human_review_required", "do_not_render"]
+        },
+        "ai_output_requires_human_adjudication": {
+          "type": "boolean",
+          "const": true,
+          "description": "Core rule: AI responses have no continuity authority until a human adjudication event attaches to them."
+        },
+        "forbid_first_person_impersonation": {
+          "type": "boolean",
+          "default": true
+        },
+        "forbid_gap_filling": {
+          "type": "boolean",
+          "default": true
+        },
+        "forbid_unlabeled_synthesis": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  }
+}
