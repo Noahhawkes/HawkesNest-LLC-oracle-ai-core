@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sov1.ai/miricledrive/schema/cognition.envelope.schema.json",
   "title": "MiricleDrive Cognition Envelope Schema",
-  "description": "Canonical commitment object for human-AI cognition artifacts. The envelope is the unit that is canonicalized, hashed, chained, signed, promoted, and later redacted without breaking ledger integrity.",
+  "description": "Canonical commitment object for human-AI cognition artifacts. The envelope is the unit that is canonicalized, hashed, chained, signed, promoted, and later redacted without breaking ledger integrity. Redaction guarantees local non-service and chain continuity, not global erasure.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,124 +17,62 @@
     "governance"
   ],
   "properties": {
-    "schema_version": {
-      "type": "string",
-      "const": "miricledrive.cognition_envelope.v1"
-    },
-    "envelope_id": {
-      "type": "string",
-      "format": "uuid"
-    },
-    "created_at": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "source_thread_id": {
-      "type": ["string", "null"],
-      "format": "uuid"
-    },
-    "source_turn_id": {
-      "type": ["string", "null"],
-      "format": "uuid"
-    },
-    "source_message_ids": {
-      "type": "array",
-      "items": { "type": "string" },
-      "default": []
-    },
+    "schema_version": { "type": "string", "const": "miricledrive.cognition_envelope.v1.1" },
+    "envelope_id": { "type": "string", "format": "uuid" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "source_thread_id": { "type": ["string", "null"], "format": "uuid" },
+    "source_turn_id": { "type": ["string", "null"], "format": "uuid" },
+    "source_message_ids": { "type": "array", "items": { "type": "string" }, "default": [] },
     "canonicalization": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["method", "status"],
+      "required": ["method", "commitment_ready"],
       "properties": {
-        "method": {
-          "type": "string",
-          "enum": ["rfc8785_json_canonicalization", "miricledrive_v1_canonical_json", "not_canonicalized"]
-        },
-        "status": {
-          "type": "string",
-          "enum": ["canonical", "provisional", "not_canonicalized"]
-        },
-        "unicode_normalization": {
-          "type": "string",
-          "enum": ["NFC", "NFKC", "none", "unknown"],
-          "default": "NFC"
-        },
-        "null_handling": {
-          "type": "string",
-          "enum": ["preserve_nulls", "omit_nulls", "unknown"],
-          "default": "preserve_nulls"
-        },
-        "array_order_rule": {
-          "type": "string",
-          "enum": ["source_order", "sorted_by_id", "sorted_by_hash", "unknown"],
-          "default": "source_order"
-        },
+        "method": { "type": "string", "enum": ["rfc8785_json_canonicalization", "miricledrive_v1_canonical_json"] },
+        "commitment_ready": { "type": "boolean", "const": true, "description": "Canonicalization is a precondition of commitment. Provisional or non-canonical envelopes must not be committed, signed, or chained." },
+        "unicode_normalization": { "type": "string", "enum": ["NFC", "NFKC"], "default": "NFC" },
+        "null_handling": { "type": "string", "enum": ["preserve_nulls", "omit_nulls"], "default": "preserve_nulls" },
+        "array_order_rule": { "type": "string", "enum": ["source_order", "sorted_by_id", "sorted_by_hash"], "default": "source_order" },
         "notes": { "type": ["string", "null"] }
       }
     },
     "content_commitments": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["envelope_hash", "hash_algorithm", "content_separation_mode"],
+      "required": ["envelope_hash", "hash_algorithm", "commitment_scheme", "content_separation_mode"],
       "properties": {
-        "envelope_hash": {
-          "type": ["string", "null"],
-          "description": "Hash of the canonical envelope excluding signature fields. May be null while provisional."
-        },
-        "hash_algorithm": {
-          "type": "string",
-          "enum": ["sha256", "sha512", "blake3", "unknown"]
-        },
-        "content_separation_mode": {
-          "type": "string",
-          "enum": ["inline_content", "external_content_pointer", "hash_only", "redacted_tombstone_ready"]
-        },
-        "prompt_hash": { "type": ["string", "null"] },
-        "response_hash": { "type": ["string", "null"] },
-        "system_prompt_hash": { "type": ["string", "null"] },
-        "context_window_hash": { "type": ["string", "null"] },
-        "tool_outputs_hash": { "type": ["string", "null"] },
-        "source_export_hash": { "type": ["string", "null"] },
-        "redactable_content_hashes": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/content_hash_pointer" },
-          "default": []
-        }
+        "envelope_hash": { "type": "string", "description": "Hash of the canonical envelope excluding signatures and ledger-applied new head metadata." },
+        "hash_algorithm": { "type": "string", "enum": ["sha256", "sha512", "blake3"] },
+        "commitment_scheme": { "type": "string", "enum": ["plain_hash", "salted_hash", "nonce_hiding_commitment"], "description": "Plain hashes are binding but not hiding. Redactable low-entropy content should use nonce_hiding_commitment." },
+        "content_separation_mode": { "type": "string", "enum": ["inline_content", "external_content_pointer", "hash_only", "redacted_tombstone_ready"] },
+        "redaction_guarantee_scope": { "type": "string", "enum": ["local_non_service_only", "local_non_service_plus_chain_continuity", "no_global_erasure_guarantee"], "default": "local_non_service_plus_chain_continuity" },
+        "prompt_commitment": { "$ref": "#/$defs/commitment_record" },
+        "response_commitment": { "$ref": "#/$defs/commitment_record" },
+        "system_prompt_commitment": { "$ref": "#/$defs/commitment_record" },
+        "context_window_commitment": { "$ref": "#/$defs/commitment_record" },
+        "tool_outputs_commitment": { "$ref": "#/$defs/commitment_record" },
+        "source_export_commitment": { "$ref": "#/$defs/commitment_record" },
+        "redactable_content_commitments": { "type": "array", "items": { "$ref": "#/$defs/redactable_commitment" }, "default": [] }
       }
     },
-    "content_pointers": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/content_pointer" },
-      "default": []
-    },
+    "content_pointers": { "type": "array", "items": { "$ref": "#/$defs/content_pointer" }, "default": [] },
     "generation_context": {
       "type": "object",
       "additionalProperties": false,
       "required": ["artifact_role", "platform", "model_provider", "model_name", "model_version_status"],
       "properties": {
-        "artifact_role": {
-          "type": "string",
-          "enum": ["human_prompt", "ai_response", "tool_output", "system_message", "human_correction", "model_comparison", "human_judgment", "mixed_thread", "unknown"]
-        },
+        "artifact_role": { "type": "string", "enum": ["human_prompt", "ai_response", "tool_output", "system_message", "human_correction", "model_comparison", "human_judgment", "mixed_thread", "unknown"] },
         "platform": { "type": ["string", "null"] },
         "model_provider": { "type": ["string", "null"] },
         "model_name": { "type": ["string", "null"] },
         "model_version": { "type": ["string", "null"] },
-        "model_version_status": {
-          "type": "string",
-          "enum": ["exact", "reported", "approximate", "hidden", "unknown", "not_applicable"]
-        },
+        "model_version_status": { "type": "string", "enum": ["exact", "reported", "approximate", "hidden", "unknown", "not_applicable"] },
         "conversation_id": { "type": ["string", "null"] },
         "request_id": { "type": ["string", "null"] },
         "parameters_json": { "type": ["object", "null"] },
         "hidden_context_known": { "type": "boolean", "default": false },
         "hidden_context_notes": { "type": ["string", "null"] },
-        "tool_invocation_ids": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": []
-        }
+        "tool_invocation_ids": { "type": "array", "items": { "type": "string" }, "default": [] }
       }
     },
     "authorship": {
@@ -142,14 +80,8 @@
       "additionalProperties": false,
       "required": ["authorship_boundary", "source_authority", "human_origin_present"],
       "properties": {
-        "authorship_boundary": {
-          "type": "string",
-          "enum": ["human_origin", "ai_generated", "human_ai_coauthored", "tool_generated", "mixed", "unknown"]
-        },
-        "source_authority": {
-          "type": "string",
-          "enum": ["primary_human", "human_supplied", "model_output", "tool_output", "third_party", "unknown"]
-        },
+        "authorship_boundary": { "type": "string", "enum": ["human_origin", "ai_generated", "human_ai_coauthored", "tool_generated", "mixed", "unknown"] },
+        "source_authority": { "type": "string", "enum": ["primary_human", "human_supplied", "model_output", "tool_output", "third_party", "unknown"] },
         "human_origin_present": { "type": "boolean" },
         "ai_generated_present": { "type": "boolean", "default": false },
         "third_party_content_present": { "type": "boolean", "default": false },
@@ -159,21 +91,13 @@
     "reproducibility": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status"],
+      "required": ["status", "claim_basis"],
       "properties": {
-        "status": {
-          "type": "string",
-          "enum": ["reproducible", "partially_reproducible", "not_reproducible", "unknown"]
-        },
+        "status": { "type": "string", "enum": ["tested_reproducible", "tested_partially_reproducible", "tested_not_reproducible", "untested_unknown"] },
+        "claim_basis": { "type": "string", "enum": ["reproduction_test_event", "not_tested", "external_attestation"] },
+        "reproduction_test_event_id": { "type": ["string", "null"], "format": "uuid" },
         "reason": { "type": ["string", "null"] },
-        "missing_reproduction_factors": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["model_weights", "hidden_system_prompt", "seed", "sampling_parameters", "retrieval_context", "tool_state", "model_revision", "safety_layer", "unknown"]
-          },
-          "default": []
-        }
+        "missing_reproduction_factors": { "type": "array", "items": { "type": "string", "enum": ["model_weights", "hidden_system_prompt", "seed", "sampling_parameters", "retrieval_context", "tool_state", "model_revision", "safety_layer", "unknown"] }, "default": [] }
       }
     },
     "governance": {
@@ -181,28 +105,13 @@
       "additionalProperties": false,
       "required": ["evidence_level", "continuity_authority_status", "render_policy"],
       "properties": {
-        "evidence_level": {
-          "type": "string",
-          "enum": ["recorded", "derived", "inferred", "uncertain", "missing", "forbidden"]
-        },
-        "continuity_authority_status": {
-          "type": "string",
-          "enum": ["none", "pending_human_adjudication", "human_promoted", "human_rejected", "blocked"]
-        },
-        "render_policy": {
-          "type": "string",
-          "enum": ["may_quote", "may_summarize_with_citation", "human_review_required", "do_not_render"]
-        },
+        "evidence_level": { "type": "string", "enum": ["recorded", "derived", "inferred", "uncertain", "missing", "forbidden"] },
+        "continuity_authority_status": { "type": "string", "enum": ["none", "pending_human_adjudication", "human_promoted", "human_rejected", "blocked"] },
+        "render_policy": { "type": "string", "enum": ["may_quote", "may_summarize_with_citation", "human_review_required", "do_not_render"] },
         "promotion_required": { "type": "boolean", "default": true },
-        "lowest_trust_ancestor_class": {
-          "type": "string",
-          "enum": ["primary_human", "human_supplied", "model_output", "tool_output", "third_party", "unknown"]
-        },
-        "third_party_scope": {
-          "type": "string",
-          "enum": ["none_detected", "possible", "confirmed", "restricted", "unknown"],
-          "default": "unknown"
-        },
+        "lowest_trust_ancestor_cache": { "type": ["string", "null"], "enum": ["primary_human", "human_supplied", "model_output", "tool_output", "third_party", "unknown", null], "description": "Derived cache only. Authoritative trust class must be rebuilt from derives_from edges." },
+        "lowest_trust_ancestor_cache_status": { "type": "string", "enum": ["derived_cache", "stale", "not_computed"], "default": "not_computed" },
+        "third_party_scope": { "type": "string", "enum": ["none_detected", "possible", "confirmed", "restricted", "unknown"], "default": "unknown" },
         "redaction_eligible": { "type": "boolean", "default": true }
       }
     },
@@ -210,53 +119,66 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "prior_ledger_head": { "type": ["string", "null"] },
-        "event_id": { "type": ["string", "null"], "format": "uuid" },
-        "new_ledger_head": { "type": ["string", "null"] },
-        "binding_status": {
-          "type": "string",
-          "enum": ["bound", "unbound", "provisional"],
-          "default": "unbound"
-        }
+        "prior_ledger_head": { "type": ["string", "null"], "description": "Prior head may be included in the signed envelope for replay protection." },
+        "append_event_id": { "type": ["string", "null"], "format": "uuid" },
+        "binding_status": { "type": "string", "enum": ["bound", "unbound", "provisional"], "default": "unbound" },
+        "note": { "type": "string", "const": "new_ledger_head is intentionally excluded from the committed envelope to avoid circular dependency. The ledger computes and applies it on append." }
       }
     },
+    "derives_from": { "type": "array", "items": { "$ref": "#/$defs/derivation_edge" }, "default": [] },
     "notes": { "type": ["string", "null"] }
   },
   "$defs": {
+    "commitment_record": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["commitment_value", "commitment_scheme", "hash_algorithm"],
+      "properties": {
+        "commitment_value": { "type": ["string", "null"] },
+        "commitment_scheme": { "type": "string", "enum": ["plain_hash", "salted_hash", "nonce_hiding_commitment"] },
+        "hash_algorithm": { "type": "string", "enum": ["sha256", "sha512", "blake3"] },
+        "nonce_status": { "type": "string", "enum": ["not_used", "stored_sealed", "destroyed_for_redaction", "unknown"], "default": "unknown" },
+        "low_entropy_warning": { "type": "boolean", "default": false }
+      }
+    },
+    "redactable_commitment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "commitment_value", "commitment_scheme", "redaction_behavior"],
+      "properties": {
+        "label": { "type": "string" },
+        "commitment_value": { "type": ["string", "null"] },
+        "commitment_scheme": { "type": "string", "enum": ["salted_hash", "nonce_hiding_commitment"] },
+        "hash_algorithm": { "type": "string", "enum": ["sha256", "sha512", "blake3"], "default": "sha256" },
+        "nonce_status": { "type": "string", "enum": ["stored_sealed", "destroyed_for_redaction", "unknown"], "default": "unknown" },
+        "redaction_behavior": { "type": "string", "enum": ["preserve_commitment_destroy_nonce", "seal_content", "remove_commitment_if_required"] },
+        "guarantee_limit": { "type": "string", "const": "Redaction prevents local service and may preserve chain continuity; it does not guarantee global erasure of bytes retained elsewhere." }
+      }
+    },
     "content_pointer": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["pointer_id", "pointer_type", "hash", "storage_policy"],
+      "required": ["pointer_id", "pointer_type", "commitment", "storage_policy"],
       "properties": {
         "pointer_id": { "type": "string" },
-        "pointer_type": {
-          "type": "string",
-          "enum": ["inline", "artifact_ref", "external_uri", "sealed_blob", "redacted", "unknown"]
-        },
+        "pointer_type": { "type": "string", "enum": ["inline", "artifact_ref", "external_uri", "sealed_blob", "redacted", "unknown"] },
         "artifact_id": { "type": ["string", "null"], "format": "uuid" },
         "uri": { "type": ["string", "null"] },
-        "hash": { "type": ["string", "null"] },
-        "hash_algorithm": { "type": "string", "enum": ["sha256", "sha512", "blake3", "unknown"], "default": "sha256" },
-        "storage_policy": {
-          "type": "string",
-          "enum": ["normal", "sealed", "redactable", "tombstoned", "external_only"]
-        },
+        "commitment": { "$ref": "#/$defs/commitment_record" },
+        "storage_policy": { "type": "string", "enum": ["normal", "sealed", "redactable", "tombstoned", "external_only"] },
         "byte_range": { "type": ["string", "null"] },
         "notes": { "type": ["string", "null"] }
       }
     },
-    "content_hash_pointer": {
+    "derivation_edge": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["label", "hash", "redaction_behavior"],
+      "required": ["source_envelope_id", "derivation_type", "source_trust_class"],
       "properties": {
-        "label": { "type": "string" },
-        "hash": { "type": ["string", "null"] },
-        "hash_algorithm": { "type": "string", "enum": ["sha256", "sha512", "blake3", "unknown"], "default": "sha256" },
-        "redaction_behavior": {
-          "type": "string",
-          "enum": ["preserve_hash_remove_content", "seal_content", "remove_hash_and_content_if_required", "unknown"]
-        }
+        "source_envelope_id": { "type": "string", "format": "uuid" },
+        "derivation_type": { "type": "string", "enum": ["quoted_from", "summarized_from", "corrected_from", "prompted_by", "responded_to", "tool_derived", "human_promoted_from", "other"] },
+        "source_trust_class": { "type": "string", "enum": ["primary_human", "human_supplied", "model_output", "tool_output", "third_party", "unknown"] },
+        "source_envelope_hash": { "type": ["string", "null"] }
       }
     }
   }
