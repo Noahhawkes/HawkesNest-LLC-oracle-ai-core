@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sov1.ai/miricledrive/schema/governance.event.schema.json",
+  "title": "MiricleDrive Governance Event Schema",
+  "description": "Shared event shape for authority-bearing MiricleDrive protocol actions. This schema defines abstract authority slots, canonical signed payload boundaries, genesis domain separation, agenda-capture events, and ledger binding without embedding succession rules directly.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "created_at",
+    "archive_genesis_id",
+    "actor_ref",
+    "authority_proof",
+    "signed_payload",
+    "signature",
+    "ledger_binding"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "miricledrive.governance_event.v1"
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "envelope_canonicalized",
+        "envelope_hash_computed",
+        "ledger_anchor_created",
+        "external_anchor_recorded",
+        "promotion_requested",
+        "promotion_signed",
+        "promotion_rejected",
+        "review_threshold_set",
+        "review_queue_built",
+        "review_item_queued",
+        "review_item_deferred",
+        "review_item_surfaced",
+        "review_item_not_surfaced",
+        "review_sampling_reported",
+        "tombstone_requested",
+        "tombstone_created",
+        "redaction_executed",
+        "key_registered",
+        "key_rotated",
+        "key_revoked",
+        "succession_rule_created",
+        "succession_rule_updated",
+        "succession_activated",
+        "fallback_resolver_invoked",
+        "policy_changed",
+        "emergency_freeze_activated",
+        "emergency_freeze_lifted"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "archive_genesis_id": {
+      "type": "string",
+      "description": "Domain separator binding this event to one archive genesis. Prevents signatures from one archive being replayed into another."
+    },
+    "actor_ref": {
+      "$ref": "#/$defs/actor_ref"
+    },
+    "authority_proof": {
+      "$ref": "#/$defs/authority_proof"
+    },
+    "signed_payload": {
+      "$ref": "#/$defs/signed_payload"
+    },
+    "signature": {
+      "$ref": "#/$defs/signature"
+    },
+    "ledger_binding": {
+      "$ref": "#/$defs/ledger_binding"
+    },
+    "event_state": {
+      "type": "string",
+      "enum": ["proposed", "signed", "appended", "superseded", "contested", "voided"],
+      "default": "proposed"
+    },
+    "notes": {
+      "type": ["string", "null"]
+    }
+  },
+  "$defs": {
+    "actor_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_id", "actor_type"],
+      "properties": {
+        "actor_id": { "type": "string" },
+        "actor_type": {
+          "type": "string",
+          "enum": ["origin_authority", "successor_authority", "reviewer", "custodian", "technical_operator", "redaction_authority", "emergency_freeze_authority", "fallback_resolver", "daemon", "unknown"]
+        },
+        "display_name": { "type": ["string", "null"] },
+        "agent_record_id": { "type": ["string", "null"] }
+      }
+    },
+    "authority_proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["proof_type", "authority_scope", "validation_schema_ref"],
+      "properties": {
+        "proof_type": {
+          "type": "string",
+          "enum": ["signature_key", "threshold_signature", "delegated_capability", "court_order", "notarial_attestation", "fallback_resolver_attestation", "emergency_policy", "unknown"]
+        },
+        "authority_scope": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["promote", "reject", "queue", "defer", "surface", "not_surface", "redact", "tombstone", "rotate_key", "revoke_key", "set_threshold", "activate_succession", "freeze", "change_policy", "anchor_ledger"]
+          },
+          "minItems": 1
+        },
+        "authority_record_id": { "type": ["string", "null"] },
+        "key_id": { "type": ["string", "null"] },
+        "threshold_set_id": { "type": ["string", "null"] },
+        "fallback_resolver_id": { "type": ["string", "null"] },
+        "validation_schema_ref": {
+          "type": "string",
+          "description": "Authority validity is defined outside this schema, normally by succession.authority.schema.json or an external legal/human resolver."
+        },
+        "non_cryptographic_legitimacy_anchor": {
+          "type": ["string", "null"],
+          "description": "Used when cryptographic rules are exhausted and a named external human/legal anchor has standing to resolve contested succession or authority."
+        },
+        "proof_hash": { "type": ["string", "null"] }
+      }
+    },
+    "signed_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payload_hash", "payload_canonicalization", "stable_signed_fields", "excluded_after_signing_fields"],
+      "properties": {
+        "payload_hash": {
+          "type": "string",
+          "description": "Hash of the canonical stable payload that the signature covers."
+        },
+        "hash_algorithm": {
+          "type": "string",
+          "enum": ["sha256", "sha512", "blake3"],
+          "default": "sha256"
+        },
+        "payload_canonicalization": {
+          "type": "string",
+          "enum": ["rfc8785_json_canonicalization", "miricledrive_v1_canonical_json"]
+        },
+        "stable_signed_fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["archive_genesis_id", "event_id", "event_type", "prior_ledger_head", "target_refs", "action_payload_hash"],
+          "properties": {
+            "archive_genesis_id": { "type": "string" },
+            "event_id": { "type": "string", "format": "uuid" },
+            "event_type": { "type": "string" },
+            "created_at": { "type": "string", "format": "date-time" },
+            "actor_id": { "type": "string" },
+            "authority_record_id": { "type": ["string", "null"] },
+            "prior_ledger_head": {
+              "type": ["string", "null"],
+              "description": "Binds signature to current ledger position for replay protection."
+            },
+            "target_refs": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/target_ref" },
+              "minItems": 1
+            },
+            "action_payload_hash": {
+              "type": "string",
+              "description": "Hash of event-specific payload, such as a promotion, threshold change, tombstone, or queue decision."
+            }
+          }
+        },
+        "excluded_after_signing_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["new_ledger_head", "append_status", "derived_caches", "validation_status", "external_anchor_receipt", "index_state"]
+          },
+          "description": "Fields assigned after signing must not be included in the signed payload."
+        }
+      }
+    },
+    "target_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_type", "target_id"],
+      "properties": {
+        "target_type": {
+          "type": "string",
+          "enum": ["cognition_envelope", "artifact", "manifest_record", "claim", "ledger_event", "review_queue", "authority_record", "key_record", "policy_record", "tombstone", "external_anchor", "other"]
+        },
+        "target_id": { "type": "string" },
+        "target_hash": { "type": ["string", "null"] },
+        "target_schema_ref": { "type": ["string", "null"] }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signature_algorithm", "signature_value", "key_id", "key_custody_class"],
+      "properties": {
+        "signature_algorithm": {
+          "type": "string",
+          "enum": ["ed25519", "ecdsa_p256", "rsa_pss", "threshold_signature", "external_attestation", "unknown"]
+        },
+        "signature_value": { "type": ["string", "null"] },
+        "key_id": { "type": ["string", "null"] },
+        "key_custody_class": {
+          "type": "string",
+          "enum": ["hardware_key", "offline_key", "separate_device", "software_key", "threshold_set", "external_legal_anchor", "unknown"]
+        },
+        "signed_at": { "type": ["string", "null"], "format": "date-time" },
+        "signature_status": {
+          "type": "string",
+          "enum": ["valid_pending_chain_append", "valid_appended", "invalid", "not_verified", "external_anchor_only"],
+          "default": "not_verified"
+        }
+      }
+    },
+    "ledger_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prior_ledger_head", "new_ledger_head_status"],
+      "properties": {
+        "prior_ledger_head": {
+          "type": ["string", "null"],
+          "description": "Head before append. May be null only for archive genesis event."
+        },
+        "new_ledger_head": {
+          "type": ["string", "null"],
+          "description": "Computed by ledger append after signature. Must not be part of signed payload."
+        },
+        "new_ledger_head_status": {
+          "type": "string",
+          "enum": ["not_appended", "computed_after_append", "external_anchor_pending", "external_anchor_recorded"]
+        },
+        "ledger_sequence_number": { "type": ["integer", "null"], "minimum": 0 },
+        "external_anchor_id": { "type": ["string", "null"] }
+      }
+    },
+    "agenda_payload_examples": {
+      "type": "object",
+      "description": "Non-normative reminder: agenda events must log what was queued, deferred, surfaced, not surfaced, and why. Silence is an authority surface."
+    }
+  }
+}
