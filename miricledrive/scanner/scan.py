@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """
-MiricleDrive Scanner v0
+MiricleDrive Scanner v1
 
 Purpose:
-Walk a source directory and emit witness-grade manifest records.
+Witness-grade ingestion and fixity baseline generation.
 
-This does not summarize.
-This does not interpret.
-This does not delete.
-This does not render a person.
+This scanner is a preservation kernel, not a reasoning engine.
+It observes files, computes SHA-256 fixity, records events, separates observed data from derived guesses, and emits audit outputs.
 
-It observes, hashes, timestamps, classifies, and records.
+It does not summarize.
+It does not interpret meaning.
+It does not delete.
+It does not render a person.
+It does not fill gaps.
 """
 
 from __future__ import annotations
@@ -25,48 +27,23 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 
-SCHEMA_VERSION = "miricledrive.artifact_manifest.v1"
+SCHEMA_VERSION = "miricledrive.artifact_manifest.v1.1"
 
-
-ARCHIVE_EXTENSIONS = {
-    ".zip", ".7z", ".rar", ".tar", ".gz", ".bz2", ".xz",
-    ".tgz", ".tbz2", ".iso", ".dmg"
-}
-
-VIDEO_EXTENSIONS = {
-    ".mp4", ".mov", ".avi", ".mkv", ".m4v", ".wmv", ".webm"
-}
-
-IMAGE_EXTENSIONS = {
-    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".tiff", ".tif", ".bmp"
-}
-
-AUDIO_EXTENSIONS = {
-    ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"
-}
-
-DOCUMENT_EXTENSIONS = {
-    ".txt", ".md", ".pdf", ".doc", ".docx", ".rtf", ".odt",
-    ".xls", ".xlsx", ".csv", ".ppt", ".pptx", ".json", ".xml", ".html"
-}
-
-AI_THREAD_HINTS = {
-    "chatgpt", "claude", "gemini", "grok", "perplexity",
-    "copilot", "deepseek", "openai", "anthropic"
-}
+ARCHIVE_EXTENSIONS = {".zip", ".tar", ".gz", ".rar", ".7z", ".tgz", ".bz2", ".xz", ".iso", ".dmg"}
+AI_THREAD_HINTS = {"chatgpt", "claude", "gemini", "grok", "perplexity", "copilot", "deepseek", "openai", "anthropic"}
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def iso_from_timestamp(ts: Optional[float]) -> Optional[str]:
-    if ts is None:
+def iso_from_timestamp(timestamp: Optional[float]) -> Optional[str]:
+    if timestamp is None:
         return None
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> Optional[str]:
@@ -83,35 +60,37 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> Optional[str]:
         return None
 
 
+def has_ai_thread_hint(path: Path) -> bool:
+    full = str(path).lower()
+    return any(hint in full for hint in AI_THREAD_HINTS)
+
+
 def guess_artifact_type(path: Path) -> str:
     ext = path.suffix.lower()
-    name = path.name.lower()
     full = str(path).lower()
 
-    if ext in VIDEO_EXTENSIONS:
+    if ext in {".mp4", ".mov", ".avi", ".mkv", ".m4v", ".wmv", ".webm"}:
         return "video"
-    if ext in IMAGE_EXTENSIONS:
+    if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".tiff", ".tif", ".bmp"}:
         return "image"
-    if ext in AUDIO_EXTENSIONS:
+    if ext in {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus"}:
         return "audio"
     if ext in ARCHIVE_EXTENSIONS:
         return "archive"
-    if ext in DOCUMENT_EXTENSIONS:
-        if any(hint in full for hint in AI_THREAD_HINTS):
-            return "human_ai_thread"
+    if ext in {".txt", ".md", ".json", ".html", ".xml"} and has_ai_thread_hint(path):
+        return "human_ai_thread"
+    if ext in {".txt", ".md", ".pdf", ".doc", ".docx", ".rtf", ".odt", ".xls", ".xlsx", ".csv", ".ppt", ".pptx", ".json", ".xml", ".html"}:
         return "document"
-    if any(hint in name for hint in AI_THREAD_HINTS):
-        return "ai_conversation"
+    if "github" in full:
+        return "code_commit"
     if ext == ".log":
         return "log"
-
     return "unknown"
 
 
 def guess_source_kind(path: Path) -> str:
     full = str(path).lower()
-
-    if any(hint in full for hint in AI_THREAD_HINTS):
+    if has_ai_thread_hint(path):
         return "ai_platform_export"
     if "gopro" in full or "dcim" in full:
         return "camera_card"
@@ -119,209 +98,114 @@ def guess_source_kind(path: Path) -> str:
         return "cloud_sync"
     if "github" in full:
         return "github_export"
-
     return "local_drive"
 
 
-def guess_ai_thought(path: Path, artifact_type: str) -> Dict[str, Any]:
-    full = str(path).lower()
-
-    ai_artifact_types = {
-        "ai_conversation",
-        "prompt",
-        "ai_response",
-        "human_ai_thread",
-        "thought_trace",
-        "reasoning_export",
-        "correction_event",
-        "model_comparison",
-        "research_note",
-    }
-
-    is_ai = artifact_type in ai_artifact_types or any(hint in full for hint in AI_THREAD_HINTS)
-
-    platform_guess = None
-    for hint in AI_THREAD_HINTS:
-        if hint in full:
-            platform_guess = hint
-            break
-
+def build_error(path: Path, scanner_run_id: str, error_type: str, exc: Exception | str) -> Dict[str, Any]:
     return {
-        "is_ai_augmented_thought": is_ai,
-        "conversation_id": None,
-        "thread_id": None,
-        "turn_index": None,
-        "speaker_role": "unknown",
-        "platform": platform_guess,
-        "model_name": None,
-        "model_provider": None,
-        "prompt_hash": None,
-        "response_hash": None,
-        "contains_human_original_text": None,
-        "contains_ai_generated_text": None,
-        "contains_tool_output": None,
-        "contains_correction": None,
-        "correction_target_record_id": None,
-        "thought_artifact_class": "thread_export" if is_ai else "unknown",
-        "authorship_boundary": "unknown",
-        "rendering_constraint": "human_review_required" if is_ai else "unknown",
+        "error_id": str(uuid.uuid4()),
+        "scanner_run_id": scanner_run_id,
+        "path": str(path),
+        "error_type": error_type,
+        "error_message": repr(exc),
+        "timestamp": utc_now(),
     }
 
 
-def read_stat(path: Path) -> Dict[str, Any]:
-    st = path.stat()
-    return {
-        "byte_size": st.st_size,
-        "observed_ctime": iso_from_timestamp(getattr(st, "st_ctime", None)),
-        "observed_mtime": iso_from_timestamp(getattr(st, "st_mtime", None)),
-        "observed_atime": iso_from_timestamp(getattr(st, "st_atime", None)),
-    }
-
-
-def build_record(path: Path, root: Path, scanner_run_id: str, source_label: Optional[str]) -> Dict[str, Any]:
+def build_record(path: Path, root: Path, scanner_run_id: str, source_label: Optional[str]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     record_id = str(uuid.uuid4())
     relative_path = str(path.relative_to(root)) if path != root else path.name
-    ext = path.suffix.lower() if path.suffix else None
-    mime_type, _ = mimetypes.guess_type(str(path))
-    ingested_at = utc_now()
 
     try:
-        stat = read_stat(path)
-        read_status = "readable"
-        corruption_status = "unknown"
-        error_message = None
+        st = path.stat()
     except Exception as exc:
-        stat = {
-            "byte_size": 0,
-            "observed_ctime": None,
-            "observed_mtime": None,
-            "observed_atime": None,
-        }
-        read_status = "unreadable"
-        corruption_status = "unreadable"
-        error_message = repr(exc)
+        return None, build_error(path, scanner_run_id, "stat_failure", exc)
 
-    file_hash = sha256_file(path) if path.is_file() and read_status == "readable" else None
+    byte_size = st.st_size
+    ext = path.suffix.lower() if path.suffix else None
+    observed_mtime = iso_from_timestamp(getattr(st, "st_mtime", None))
+    observed_ctime = iso_from_timestamp(getattr(st, "st_ctime", None))
+    observed_atime = iso_from_timestamp(getattr(st, "st_atime", None))
 
-    if path.is_dir():
-        record_type = "directory_marker"
-        artifact_type = "directory"
-    else:
-        record_type = "filesystem_file"
-        artifact_type = guess_artifact_type(path)
+    file_hash = None
+    if path.is_file():
+        file_hash = sha256_file(path)
+        if not file_hash:
+            return None, build_error(path, scanner_run_id, "read_failure", "Failed to generate SHA-256 hash")
 
-    source_kind = guess_source_kind(path)
-    ai_thought = guess_ai_thought(path, artifact_type)
-
-    is_archive = ext in ARCHIVE_EXTENSIONS if ext else False
+    artifact_type_guess = guess_artifact_type(path)
+    source_kind_guess = guess_source_kind(path)
+    mime_type_guess = mimetypes.guess_type(str(path))[0]
+    ai_thread_hint = has_ai_thread_hint(path)
+    is_archive_guess = ext in ARCHIVE_EXTENSIONS if ext else False
 
     record = {
         "manifest_version": SCHEMA_VERSION,
         "scanner_run_id": scanner_run_id,
         "record_id": record_id,
-        "record_type": record_type,
-        "artifact_type": artifact_type,
-        "preservation_class": "original_candidate",
-        "path": str(path),
-        "normalized_path": relative_path.replace("\\", "/"),
-        "parent_path": str(path.parent),
-        "file_name": path.name,
-        "extension": ext,
-        "mime_type_guess": mime_type,
-        "byte_size": stat["byte_size"],
-        "hashes": {
-            "sha256": file_hash,
-            "blake3": None,
-            "md5_legacy": None,
+        "record_type": "directory_marker" if path.is_dir() else "filesystem_file",
+        "observed_data": {
+            "path": str(path),
+            "normalized_path": relative_path.replace("\\", "/"),
+            "parent_path": str(path.parent),
+            "file_name": path.name,
+            "extension": ext,
+            "byte_size": byte_size,
+            "hashes": {
+                "sha256": file_hash,
+                "blake3": None
+            },
+            "timestamps": {
+                "observed_ctime": observed_ctime,
+                "observed_mtime": observed_mtime,
+                "observed_atime": observed_atime,
+                "ingested_at": utc_now()
+            }
         },
-        "timestamps": {
-            "observed_ctime": stat["observed_ctime"],
-            "observed_mtime": stat["observed_mtime"],
-            "observed_atime": stat["observed_atime"],
-            "exif_capture_time": None,
-            "media_created_time": None,
-            "conversation_created_time": None,
-            "conversation_updated_time": None,
-            "filename_time_guess": None,
-            "ingested_at": ingested_at,
-            "timezone_context": "UTC",
-            "time_confidence": "medium" if stat["observed_mtime"] else "unknown",
-            "time_notes": "Filesystem timestamp only. Not proof of original capture time.",
-        },
-        "provenance": {
-            "source_kind": source_kind,
-            "source_label": source_label,
-            "source_platform": ai_thought["platform"],
-            "source_model": None,
-            "source_device_id": platform.node(),
-            "source_volume_id": None,
-            "source_archive_record_id": None,
-            "archive_internal_path": None,
-            "observed_original_path": str(path),
-            "source_confidence": "medium",
-            "chain_of_custody_notes": "Observed by MiricleDrive scanner. No interpretation performed.",
-        },
-        "ai_thought": ai_thought,
-        "archive": {
-            "is_archive": is_archive,
-            "archive_format": ext[1:] if is_archive and ext else None,
-            "member_count": None,
-            "extraction_status": "not_attempted" if is_archive else "not_applicable",
-            "parent_archive_record_id": None,
-            "nested_depth": None,
-        },
-        "media": {
-            "duration_seconds": None,
-            "width": None,
-            "height": None,
-            "frame_rate": None,
-            "codec": None,
-            "audio_present": None,
-            "video_present": None,
-        },
-        "status": {
-            "read_status": read_status,
-            "corruption_status": corruption_status,
-            "format_risk_level": "unknown",
-            "error_message": error_message,
-        },
-        "duplicate_tracking": {
-            "exact_duplicate_group_id": None,
-            "near_duplicate_group_id": None,
-            "duplicate_role": "unknown",
+        "derived_data": {
+            "mime_type_guess": mime_type_guess,
+            "artifact_type_guess": artifact_type_guess,
+            "source_kind_guess": source_kind_guess,
+            "is_archive_guess": is_archive_guess,
+            "ai_thread_hint": ai_thread_hint,
+            "time_confidence": "medium" if observed_mtime else "unknown",
+            "time_notes": "Filesystem timestamp only. Not proof of original capture or creation time."
         },
         "governance": {
+            "evidence_level": "recorded",
             "access_restriction": "unknown",
             "privacy_sensitivity": "unknown",
             "human_review_priority": "unknown",
-            "ai_authorship_risk": "high" if ai_thought["is_ai_augmented_thought"] else "unknown",
+            "ai_authorship_risk": "high" if ai_thread_hint else "unknown",
+            "non_invention_boundary": "Observed data is separated from derived guesses. No semantic interpretation performed."
         },
-        "evidence_level": "recorded",
-        "notes": None,
+        "status": {
+            "read_status": "readable",
+            "corruption_status": "unknown",
+            "format_risk_level": "unknown"
+        },
+        "provenance": {
+            "source_label": source_label,
+            "source_device_id": platform.node(),
+            "observed_original_path": str(path),
+            "source_confidence": "medium",
+            "chain_of_custody_notes": "Observed by MiricleDrive scanner. No interpretation performed."
+        }
     }
 
-    return record
+    return record, None
 
 
-def iter_paths(root: Path, include_dirs: bool = False) -> Iterable[Path]:
+def write_event(events_path: Path, event: Dict[str, Any]) -> None:
+    with events_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(event, ensure_ascii=False, sort_keys=True))
+        f.write("\n")
+
+
+def iter_file_paths(root: Path) -> Iterable[Path]:
     for current_root, _dirs, files in os.walk(root):
-        current = Path(current_root)
-
-        if include_dirs:
-            yield current
-
         for name in files:
-            yield current / name
-
-
-def write_jsonl(path: Path, records: Iterable[Dict[str, Any]]) -> int:
-    count = 0
-    with path.open("w", encoding="utf-8") as f:
-        for record in records:
-            f.write(json.dumps(record, ensure_ascii=False, sort_keys=True))
-            f.write("\n")
-            count += 1
-    return count
+            yield Path(current_root) / name
 
 
 def build_duplicates(manifest_path: Path, output_path: Path) -> Dict[str, Any]:
@@ -330,16 +214,15 @@ def build_duplicates(manifest_path: Path, output_path: Path) -> Dict[str, Any]:
     with manifest_path.open("r", encoding="utf-8") as f:
         for line in f:
             record = json.loads(line)
-            sha = record.get("hashes", {}).get("sha256")
+            sha = record.get("observed_data", {}).get("hashes", {}).get("sha256")
             if sha:
                 groups.setdefault(sha, []).append({
                     "record_id": record["record_id"],
-                    "path": record["path"],
-                    "byte_size": record["byte_size"],
+                    "path": record["observed_data"]["path"],
+                    "byte_size": record["observed_data"]["byte_size"],
                 })
 
     duplicate_groups = {sha: items for sha, items in groups.items() if len(items) > 1}
-
     payload = {
         "generated_at": utc_now(),
         "exact_duplicate_group_count": len(duplicate_groups),
@@ -357,19 +240,20 @@ def build_fixity_baseline(manifest_path: Path, output_path: Path) -> int:
     with manifest_path.open("r", encoding="utf-8") as src, output_path.open("w", encoding="utf-8") as out:
         for line in src:
             record = json.loads(line)
-            sha = record.get("hashes", {}).get("sha256")
-            if sha:
-                out.write(f"{sha}  {record['normalized_path']}\n")
+            sha = record.get("observed_data", {}).get("hashes", {}).get("sha256")
+            normalized_path = record.get("observed_data", {}).get("normalized_path")
+            if sha and normalized_path:
+                out.write(f"{sha}  {normalized_path}\n")
                 count += 1
     return count
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="MiricleDrive witness-grade ingestion scanner v0.")
+    parser = argparse.ArgumentParser(description="MiricleDrive witness-grade ingestion scanner v1.")
     parser.add_argument("source", help="Source folder to scan.")
     parser.add_argument("--output", default="miricledrive_scan_output", help="Output folder.")
     parser.add_argument("--source-label", default=None, help="Human-readable source label.")
-    parser.add_argument("--include-dirs", action="store_true", help="Include directory marker records.")
+    parser.add_argument("--write-blocker-active", action="store_true", help="Indicates original media is protected by a write blocker or read-only policy.")
     args = parser.parse_args()
 
     root = Path(args.source).expanduser().resolve()
@@ -381,45 +265,72 @@ def main() -> int:
         return 2
 
     scanner_run_id = str(uuid.uuid4())
+    start_time = utc_now()
 
     manifest_path = output_dir / "manifest.ndjson"
+    errors_path = output_dir / "errors.ndjson"
     duplicates_path = output_dir / "duplicates.json"
+    events_path = output_dir / "ingest-events.ndjson"
     fixity_path = output_dir / "fixity-baseline.txt"
-    ingest_events_path = output_dir / "ingest-events.ndjson"
 
-    def records() -> Iterable[Dict[str, Any]]:
-        for path in iter_paths(root, include_dirs=args.include_dirs):
-            yield build_record(path, root, scanner_run_id, args.source_label)
+    write_event(events_path, {
+        "event_id": str(uuid.uuid4()),
+        "event_type": "scan_started",
+        "scanner_run_id": scanner_run_id,
+        "timestamp": start_time,
+        "source": str(root),
+        "source_label": args.source_label,
+        "write_blocker_active": bool(args.write_blocker_active),
+        "host": platform.node(),
+        "platform": platform.platform(),
+        "non_invention_boundary": "Scanner observes files and metadata only. No semantic interpretation performed."
+    })
 
-    manifest_count = write_jsonl(manifest_path, records())
+    manifest_count = 0
+    error_count = 0
+
+    with manifest_path.open("w", encoding="utf-8") as mf, errors_path.open("w", encoding="utf-8") as ef:
+        for path in iter_file_paths(root):
+            record, error = build_record(path, root, scanner_run_id, args.source_label)
+            if error:
+                ef.write(json.dumps(error, ensure_ascii=False, sort_keys=True))
+                ef.write("\n")
+                error_count += 1
+                continue
+            if record:
+                mf.write(json.dumps(record, ensure_ascii=False, sort_keys=True))
+                mf.write("\n")
+                manifest_count += 1
+
     duplicate_payload = build_duplicates(manifest_path, duplicates_path)
     fixity_count = build_fixity_baseline(manifest_path, fixity_path)
+    end_time = utc_now()
 
-    ingest_event = {
+    write_event(events_path, {
         "event_id": str(uuid.uuid4()),
         "event_type": "scan_completed",
         "scanner_run_id": scanner_run_id,
+        "timestamp": end_time,
         "source": str(root),
         "source_label": args.source_label,
-        "started_or_recorded_at": utc_now(),
         "manifest_path": str(manifest_path),
         "duplicates_path": str(duplicates_path),
+        "errors_path": str(errors_path),
         "fixity_baseline_path": str(fixity_path),
         "manifest_record_count": manifest_count,
+        "error_count": error_count,
         "fixity_record_count": fixity_count,
         "exact_duplicate_group_count": duplicate_payload["exact_duplicate_group_count"],
+        "write_blocker_active": bool(args.write_blocker_active),
         "host": platform.node(),
         "platform": platform.platform(),
-        "non_invention_boundary": "Scanner observed files and metadata only. No semantic interpretation performed.",
-    }
-
-    with ingest_events_path.open("w", encoding="utf-8") as f:
-        f.write(json.dumps(ingest_event, indent=2, ensure_ascii=False, sort_keys=True))
-        f.write("\n")
+        "non_invention_boundary": "Scan completed without semantic interpretation."
+    })
 
     print("MiricleDrive scan complete.")
     print(f"Scanner run: {scanner_run_id}")
     print(f"Manifest records: {manifest_count}")
+    print(f"Errors: {error_count}")
     print(f"Fixity records: {fixity_count}")
     print(f"Duplicate groups: {duplicate_payload['exact_duplicate_group_count']}")
     print(f"Output: {output_dir}")
