@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sov1.ai/miricledrive/schema/artifact.manifest.schema.json",
   "title": "MiricleDrive Artifact Manifest Record",
-  "description": "One newline-delimited JSON record emitted by the MiricleDrive ingestion scanner for a discovered file or archive member. This schema records provenance, fixity, timestamps, source confidence, and non-invention boundaries before interpretation.",
+  "description": "One newline-delimited JSON record emitted by the MiricleDrive ingestion scanner for a discovered file, archive member, AI conversation export, augmented thought artifact, or multimodal memory object. This schema records provenance, fixity, timestamps, source confidence, AI involvement, and non-invention boundaries before interpretation.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -20,74 +20,61 @@
     "evidence_level"
   ],
   "properties": {
-    "manifest_version": {
-      "type": "string",
-      "const": "miricledrive.artifact_manifest.v1"
-    },
-    "scanner_run_id": {
-      "type": "string",
-      "format": "uuid",
-      "description": "UUID for the scanner run that produced this record."
-    },
-    "record_id": {
-      "type": "string",
-      "format": "uuid",
-      "description": "UUID for this manifest record."
-    },
-    "record_type": {
-      "type": "string",
-      "enum": ["filesystem_file", "archive_member", "directory_marker", "error_record"]
-    },
+    "manifest_version": { "type": "string", "const": "miricledrive.artifact_manifest.v1" },
+    "scanner_run_id": { "type": "string", "format": "uuid", "description": "UUID for the scanner run that produced this record." },
+    "record_id": { "type": "string", "format": "uuid", "description": "UUID for this manifest record." },
+    "record_type": { "type": "string", "enum": ["filesystem_file", "archive_member", "directory_marker", "ai_conversation_export", "thought_trace_record", "error_record"] },
     "artifact_type": {
       "type": "string",
-      "enum": ["video", "image", "audio", "document", "message_export", "disk_image", "backup_set", "archive", "transcript", "embedding", "note", "log", "directory", "unknown", "other"],
+      "enum": [
+        "video",
+        "image",
+        "audio",
+        "document",
+        "message_export",
+        "ai_conversation",
+        "prompt",
+        "ai_response",
+        "human_ai_thread",
+        "thought_trace",
+        "reasoning_export",
+        "correction_event",
+        "model_comparison",
+        "research_note",
+        "code_commit",
+        "disk_image",
+        "backup_set",
+        "archive",
+        "transcript",
+        "embedding",
+        "note",
+        "log",
+        "directory",
+        "unknown",
+        "other"
+      ],
       "default": "unknown"
     },
     "preservation_class": {
       "type": "string",
-      "enum": ["original_candidate", "preservation_master", "access_copy", "derivative", "inferred_record", "unknown"],
+      "enum": ["original_candidate", "preservation_master", "access_copy", "derivative", "ai_assisted_original", "ai_generated_derivative", "inferred_record", "unknown"],
       "default": "unknown"
     },
-    "path": {
-      "type": "string",
-      "description": "Observed path or archive-internal path."
-    },
-    "normalized_path": {
-      "type": "string",
-      "description": "Scanner-normalized path used for stable comparison."
-    },
-    "parent_path": {
-      "type": ["string", "null"]
-    },
-    "file_name": {
-      "type": "string"
-    },
-    "extension": {
-      "type": ["string", "null"]
-    },
-    "mime_type_guess": {
-      "type": ["string", "null"]
-    },
-    "byte_size": {
-      "type": "integer",
-      "minimum": 0
-    },
+    "path": { "type": "string", "description": "Observed path, archive-internal path, or export-internal logical path." },
+    "normalized_path": { "type": "string", "description": "Scanner-normalized path used for stable comparison." },
+    "parent_path": { "type": ["string", "null"] },
+    "file_name": { "type": "string" },
+    "extension": { "type": ["string", "null"] },
+    "mime_type_guess": { "type": ["string", "null"] },
+    "byte_size": { "type": "integer", "minimum": 0 },
     "hashes": {
       "type": "object",
       "additionalProperties": false,
       "required": ["sha256"],
       "properties": {
-        "sha256": {
-          "type": ["string", "null"],
-          "pattern": "^[a-fA-F0-9]{64}$"
-        },
-        "blake3": {
-          "type": ["string", "null"]
-        },
-        "md5_legacy": {
-          "type": ["string", "null"],
-          "pattern": "^[a-fA-F0-9]{32}$"
-        }
+        "sha256": { "type": ["string", "null"], "pattern": "^[a-fA-F0-9]{64}$" },
+        "blake3": { "type": ["string", "null"] },
+        "md5_legacy": { "type": ["string", "null"], "pattern": "^[a-fA-F0-9]{32}$" }
       }
     },
     "timestamps": {
@@ -100,13 +87,12 @@
         "observed_atime": { "type": ["string", "null"], "format": "date-time" },
         "exif_capture_time": { "type": ["string", "null"], "format": "date-time" },
         "media_created_time": { "type": ["string", "null"], "format": "date-time" },
+        "conversation_created_time": { "type": ["string", "null"], "format": "date-time" },
+        "conversation_updated_time": { "type": ["string", "null"], "format": "date-time" },
         "filename_time_guess": { "type": ["string", "null"], "format": "date-time" },
         "ingested_at": { "type": "string", "format": "date-time" },
         "timezone_context": { "type": ["string", "null"] },
-        "time_confidence": {
-          "type": "string",
-          "enum": ["high", "medium", "low", "unknown"]
-        },
+        "time_confidence": { "type": "string", "enum": ["high", "medium", "low", "unknown"] },
         "time_notes": { "type": ["string", "null"] }
       }
     },
@@ -117,19 +103,55 @@
       "properties": {
         "source_kind": {
           "type": "string",
-          "enum": ["local_drive", "external_drive", "cloud_sync", "phone_export", "camera_card", "archive_member", "manual_copy", "system_cache", "unknown", "other"]
+          "enum": ["local_drive", "external_drive", "cloud_sync", "phone_export", "camera_card", "ai_platform_export", "chat_export", "browser_export", "github_export", "document_export", "archive_member", "manual_copy", "system_cache", "unknown", "other"]
         },
         "source_label": { "type": ["string", "null"] },
+        "source_platform": { "type": ["string", "null"], "description": "Examples: ChatGPT, Claude, Gemini, Grok, Perplexity, Copilot, DeepSeek, local model, GitHub, Google Drive." },
+        "source_model": { "type": ["string", "null"] },
         "source_device_id": { "type": ["string", "null"] },
         "source_volume_id": { "type": ["string", "null"] },
         "source_archive_record_id": { "type": ["string", "null"], "format": "uuid" },
         "archive_internal_path": { "type": ["string", "null"] },
         "observed_original_path": { "type": ["string", "null"] },
-        "source_confidence": {
-          "type": "string",
-          "enum": ["high", "medium", "low", "unknown"]
-        },
+        "source_confidence": { "type": "string", "enum": ["high", "medium", "low", "unknown"] },
         "chain_of_custody_notes": { "type": ["string", "null"] }
+      }
+    },
+    "ai_thought": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Metadata for augmented AI thought artifacts: prompts, responses, recursive threads, model comparisons, corrections, and reasoning exports.",
+      "properties": {
+        "is_ai_augmented_thought": { "type": "boolean", "default": false },
+        "conversation_id": { "type": ["string", "null"] },
+        "thread_id": { "type": ["string", "null"] },
+        "turn_index": { "type": ["integer", "null"], "minimum": 0 },
+        "speaker_role": { "type": "string", "enum": ["human", "assistant", "system", "tool", "mixed", "unknown"], "default": "unknown" },
+        "platform": { "type": ["string", "null"] },
+        "model_name": { "type": ["string", "null"] },
+        "model_provider": { "type": ["string", "null"] },
+        "prompt_hash": { "type": ["string", "null"] },
+        "response_hash": { "type": ["string", "null"] },
+        "contains_human_original_text": { "type": ["boolean", "null"] },
+        "contains_ai_generated_text": { "type": ["boolean", "null"] },
+        "contains_tool_output": { "type": ["boolean", "null"] },
+        "contains_correction": { "type": ["boolean", "null"] },
+        "correction_target_record_id": { "type": ["string", "null"], "format": "uuid" },
+        "thought_artifact_class": {
+          "type": "string",
+          "enum": ["raw_prompt", "raw_response", "thread_export", "model_comparison", "correction_event", "synthesis_note", "research_trace", "tool_trace", "unknown"],
+          "default": "unknown"
+        },
+        "authorship_boundary": {
+          "type": "string",
+          "enum": ["human_origin", "ai_generated", "human_ai_coauthored", "tool_generated", "unknown"],
+          "default": "unknown"
+        },
+        "rendering_constraint": {
+          "type": "string",
+          "enum": ["may_quote", "may_summarize_with_citation", "human_review_required", "do_not_render", "unknown"],
+          "default": "human_review_required"
+        }
       }
     },
     "archive": {
@@ -139,11 +161,7 @@
         "is_archive": { "type": "boolean", "default": false },
         "archive_format": { "type": ["string", "null"] },
         "member_count": { "type": ["integer", "null"], "minimum": 0 },
-        "extraction_status": {
-          "type": "string",
-          "enum": ["not_applicable", "not_attempted", "success", "partial", "failed"],
-          "default": "not_applicable"
-        },
+        "extraction_status": { "type": "string", "enum": ["not_applicable", "not_attempted", "success", "partial", "failed"], "default": "not_applicable" },
         "parent_archive_record_id": { "type": ["string", "null"], "format": "uuid" },
         "nested_depth": { "type": ["integer", "null"], "minimum": 0 }
       }
@@ -166,19 +184,9 @@
       "additionalProperties": false,
       "required": ["read_status", "corruption_status"],
       "properties": {
-        "read_status": {
-          "type": "string",
-          "enum": ["readable", "unreadable", "partial", "permission_denied", "missing"]
-        },
-        "corruption_status": {
-          "type": "string",
-          "enum": ["unknown", "clean", "damaged", "partial", "unreadable"]
-        },
-        "format_risk_level": {
-          "type": "string",
-          "enum": ["low", "medium", "high", "unknown"],
-          "default": "unknown"
-        },
+        "read_status": { "type": "string", "enum": ["readable", "unreadable", "partial", "permission_denied", "missing"] },
+        "corruption_status": { "type": "string", "enum": ["unknown", "clean", "damaged", "partial", "unreadable"] },
+        "format_risk_level": { "type": "string", "enum": ["low", "medium", "high", "unknown"], "default": "unknown" },
         "error_message": { "type": ["string", "null"] }
       }
     },
@@ -188,41 +196,24 @@
       "properties": {
         "exact_duplicate_group_id": { "type": ["string", "null"] },
         "near_duplicate_group_id": { "type": ["string", "null"] },
-        "duplicate_role": {
-          "type": "string",
-          "enum": ["unknown", "first_seen", "additional_copy", "variant_candidate"],
-          "default": "unknown"
-        }
+        "duplicate_role": { "type": "string", "enum": ["unknown", "first_seen", "additional_copy", "variant_candidate"], "default": "unknown" }
       }
     },
     "governance": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "access_restriction": {
-          "type": "string",
-          "enum": ["open", "private", "restricted", "sealed", "unknown"],
-          "default": "unknown"
-        },
-        "privacy_sensitivity": {
-          "type": "string",
-          "enum": ["low", "medium", "high", "unknown"],
-          "default": "unknown"
-        },
-        "human_review_priority": {
-          "type": "string",
-          "enum": ["low", "normal", "high", "urgent", "unknown"],
-          "default": "unknown"
-        }
+        "access_restriction": { "type": "string", "enum": ["open", "private", "restricted", "sealed", "unknown"], "default": "unknown" },
+        "privacy_sensitivity": { "type": "string", "enum": ["low", "medium", "high", "unknown"], "default": "unknown" },
+        "human_review_priority": { "type": "string", "enum": ["low", "normal", "high", "urgent", "unknown"], "default": "unknown" },
+        "ai_authorship_risk": { "type": "string", "enum": ["low", "medium", "high", "unknown"], "default": "unknown" }
       }
     },
     "evidence_level": {
       "type": "string",
       "enum": ["recorded", "derived", "inferred", "uncertain", "missing", "forbidden"],
-      "description": "Manifest records are normally recorded or derived. Inferred records must be review-gated. Forbidden records must not be rendered narratively."
+      "description": "Manifest records are normally recorded or derived. AI-assisted thought artifacts must preserve authorship boundaries. Inferred records must be review-gated. Forbidden records must not be rendered narratively."
     },
-    "notes": {
-      "type": ["string", "null"]
-    }
+    "notes": { "type": ["string", "null"] }
   }
 }
